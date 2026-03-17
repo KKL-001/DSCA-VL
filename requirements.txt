@@ -1,0 +1,37 @@
+# Core deep learning
+# On Windows, install the torch/torchvision/torchaudio versions matching your CUDA first if needed.
+torch>=2.3
+torchvision>=0.18
+torchaudio>=2.3
+
+# Hugging Face / multimodal models
+transformers>=4.45
+accelerate>=0.33
+huggingface-hub>=0.24
+safetensors>=0.4
+sentencepiece>=0.2
+tokenizers>=0.20
+
+# Data and numerics
+numpy>=1.24
+scipy>=1.11
+pandas>=2.0
+pyarrow>=14.0
+datasets>=2.20
+
+# Vision / video I-O
+Pillow>=10.0
+opencv-python>=4.9
+imageio>=2.34
+imageio-ffmpeg>=0.5
+
+# Training utilities
+tqdm>=4.66
+einops>=0.8
+PyYAML>=6.0
+scikit-learn>=1.4
+tensorboard>=2.16
+
+# Optional but recommended for experiment management
+matplotlib>=3.8
+rich>=13.7
