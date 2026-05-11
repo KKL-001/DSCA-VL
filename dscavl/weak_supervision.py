@@ -1,3 +1,4 @@
+"""弱监督：SRT 解析、关键词抽取、与问题匹配的时间段，用于构造帧级 ``gt_mask``。"""
 from __future__ import annotations
 
 import re
@@ -10,6 +11,7 @@ import torch
 
 @dataclass
 class SubtitleSegment:
+    """单条字幕片段的时间范围与文本。"""
     start_sec: float
     end_sec: float
     text: str
@@ -25,10 +27,12 @@ _STOPWORDS = {
 
 
 def _to_seconds(hh: str, mm: str, ss: str, ms: str) -> float:
+    """SRT 时间戳转秒（含毫秒）。"""
     return int(hh) * 3600 + int(mm) * 60 + int(ss) + int(ms) / 1000.0
 
 
 def parse_srt_segments(subtitle_path: str | Path) -> list[SubtitleSegment]:
+    """简易 SRT 解析器：返回有序 ``SubtitleSegment`` 列表。"""
     path = Path(subtitle_path)
     if not path.exists():
         return []
@@ -57,12 +61,14 @@ def parse_srt_segments(subtitle_path: str | Path) -> list[SubtitleSegment]:
 
 
 def extract_keywords(question: str, options: Sequence[str]) -> set[str]:
+    """题干+选项中英小写词形，过滤停用词与过短词。"""
     text = " ".join([question, *options]).lower()
     words = _WORD_RE.findall(text)
     return {word for word in words if len(word) >= 3 and word not in _STOPWORDS and not word.isdigit()}
 
 
 def match_subtitle_segments(segments: Iterable[SubtitleSegment], keywords: set[str], min_hits: int = 1) -> list[SubtitleSegment]:
+    """字幕词与关键词交集命中数 ≥ ``min_hits`` 的片段保留。"""
     matched: list[SubtitleSegment] = []
     for segment in segments:
         segment_words = set(_WORD_RE.findall(segment.text.lower()))
@@ -80,6 +86,7 @@ def build_gt_mask_from_subtitles(
     min_hits: int = 1,
     expand_sec: float = 1.5,
 ) -> torch.Tensor | None:
+    """与 ``timestamps`` 对齐的 bool 掩码：匹配字幕时段±expand；无监督则 None。"""
     if subtitle_path is None or timestamps is None:
         return None
 
