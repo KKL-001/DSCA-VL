@@ -20,6 +20,7 @@ from dscavl import (
     DSCAVLConfig,
     QueryTextEncoder,
     QuestionFeatureDataset,
+    list_arch_variants,
     variable_feature_collate,
     ensure_frozen_visual_encoder,
     get_peak_memory_mb,
@@ -410,8 +411,9 @@ def _save_stage1_checkpoint(
     epoch: int,
     metrics: dict[str, float],
     is_best: bool,
+    save_epoch_file: bool = True,
 ):
-    """写入 epoch/latest/best 三份 checkpoint（含 ``cfg.__dict__``）。"""
+    """写入 checkpoint（含 ``cfg.__dict__``）：可选省略按 epoch 编号的副本以节省磁盘。"""
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     save_metrics = {k: v for k, v in metrics.items() if k != "_diag"}
     payload = {
@@ -423,7 +425,8 @@ def _save_stage1_checkpoint(
     }
     epoch_path = ckpt_dir / f"checkpoint-epoch{epoch}.pt"
     latest_path = ckpt_dir / "checkpoint-latest.pt"
-    torch.save(payload, epoch_path)
+    if save_epoch_file:
+        torch.save(payload, epoch_path)
     torch.save(payload, latest_path)
     if is_best:
         torch.save(payload, ckpt_dir / "checkpoint-best.pt")
@@ -434,6 +437,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train DSCA-VL stage1.")
     parser.add_argument("--data-root", type=str, default=None, help="Override cfg.data_root")
     parser.add_argument("--feature-root", type=str, default=None, help="Override cfg.feature_root")
+    parser.add_argument(
+        "--arch-variant",
+        type=str,
+        default=None,
+        choices=list_arch_variants(),
+        help="Architecture variant for module ablation. Default: cfg.arch_variant.",
+    )
     parser.add_argument(
         "--checkpoint-dir",
         type=str,
@@ -582,6 +592,18 @@ def parse_args() -> argparse.Namespace:
         help="DSAM loss_orth 权重。Default: cfg.lambda_orth。",
     )
     parser.add_argument(
+        "--lambda-compact",
+        type=float,
+        default=None,
+        help="DSAM loss_compact 权重。Default: cfg.lambda_compact。",
+    )
+    parser.add_argument(
+        "--lambda-align",
+        type=float,
+        default=None,
+        help="DSAM loss_align 权重。Default: cfg.lambda_align。",
+    )
+    parser.add_argument(
         "--lambda-recon",
         type=float,
         default=None,
@@ -592,6 +614,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="覆盖 cfg.stage1_epochs（默认同 DSCAVLConfig，通常为 30）。",
+    )
+    parser.add_argument(
+        "--no-epoch-checkpoints",
+        action="store_true",
+        help="不写入 checkpoint-epoch{k}.pt，仅保留 checkpoint-latest.pt 与（若 is_best）checkpoint-best.pt，省磁盘。",
     )
     return parser.parse_args()
 
@@ -604,6 +631,8 @@ def main():
         cfg.data_root = args.data_root
     if args.feature_root:
         cfg.feature_root = args.feature_root
+    if args.arch_variant is not None:
+        cfg.arch_variant = args.arch_variant
     if args.stage1_lr_peak is not None:
         cfg.lr = float(args.stage1_lr_peak)
     if args.stage1_lr_min is not None:
@@ -647,6 +676,10 @@ def main():
         cfg.max_per_event = int(args.max_per_event)
     if args.lambda_orth is not None:
         cfg.lambda_orth = float(args.lambda_orth)
+    if args.lambda_compact is not None:
+        cfg.lambda_compact = float(args.lambda_compact)
+    if args.lambda_align is not None:
+        cfg.lambda_align = float(args.lambda_align)
     if args.lambda_recon is not None:
         cfg.lambda_recon = float(args.lambda_recon)
     if args.stage1_epochs is not None:
@@ -669,6 +702,11 @@ def main():
             "Use precomputed features only."
         )
     print("[Stage1] Visual encoder frozen (precomputed features).")
+    print(
+        f"[Stage1] arch_variant={cfg.arch_variant} "
+        f"isoclip={cfg.use_isoclip_debias} slerp={cfg.use_riemann_slerp} "
+        f"soft_mask={cfg.use_soft_mask} sbp={cfg.use_sbp}"
+    )
     print(f"[Stage1] cgrm_use_f_bg={cfg.cgrm_use_f_bg}")
     print(
         f"[Stage1] bridge_weight={cfg.bridge_weight}, beta1={cfg.beta1}, beta2={cfg.beta2}, "
@@ -813,7 +851,16 @@ def main():
             is_best = metrics["loss"] < best_loss
             if is_best:
                 best_loss = metrics["loss"]
-            _save_stage1_checkpoint(ckpt_dir, model, optimizer, cfg, epoch_id, metrics, is_best)
+            _save_stage1_checkpoint(
+                ckpt_dir,
+                model,
+                optimizer,
+                cfg,
+                epoch_id,
+                metrics,
+                is_best,
+                save_epoch_file=not args.no_epoch_checkpoints,
+            )
     finally:
         swan_ctx.finish(log_prefix="Stage1")
 

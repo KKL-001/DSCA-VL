@@ -33,12 +33,14 @@ class DSCAVLConfig:
     sigma_temp: float = 3.0
 
     # DSAM（可验收迭代 R2：略提高 orth/recon 动态，利 BASELINE #4–#6）
+    # R12：Phase2 时间维 sim 去均值后略降 τ，与缩放后的 sim 方差/标度匹配
     alpha_init: float = 1.0
-    tau: float = 0.07
+    tau: float = 0.065
     lambda_orth: float = 0.12
     lambda_compact: float = 1.0
     lambda_align: float = 1.0
-    lambda_recon: float = 0.55
+    # R12：锐化+稀疏图后略降 recon 相对权重，避免与 align/weak 争梯度
+    lambda_recon: float = 0.52
 
     # CGRM（R2：§8 F_bg 开；§6/§2.x 略抬 bridge、β 微调；#7–#9 门控用 mix 温度+熵）
     beta1: float = 0.48
@@ -48,10 +50,51 @@ class DSCAVLConfig:
     # Causal graph calibration
     causal_decay_tau: float = 6.0
     bridge_weight: float = 0.38
-    # Softmax temperature on mix(f_q) logits; >1 softens semantic vs causal mixture (helps saturated gates).
-    cgrm_mix_temperature: float = 2.5
+    # Softmax temperature on mix(f_q) logits; lower values sharpen semantic vs causal mixture.
+    cgrm_mix_temperature: float = 1.0
     # Stage1: maximize entropy of mix weights to encourage using both semantic and causal adjacency (0 = off).
-    lambda_cgrm_mix_entropy: float = 0.015
+    # R12：图去饱和后略抬 mix 熵项，防 λ_sem/λ_cau 单支塌缩
+    lambda_cgrm_mix_entropy: float = 0.022
+
+    # Architecture variants for module ablations from the feature-decoupling reference.
+    # ``baseline`` preserves the current model; named variants only toggle module structure,
+    # so R13-R17 can keep the same optimizer/loss/validation settings.
+    arch_variant: str = "baseline"
+    use_isoclip_debias: bool = False
+    use_riemann_slerp: bool = False
+    use_soft_mask: bool = False
+    use_sbp: bool = False
+    isoclip_debias_strength: float = 0.35
+    riemann_slerp_strength: float = 0.35
+    soft_mask_strength: float = 0.35
+    sbp_negative_threshold: float = 0.18
+    sbp_negative_weight: float = 0.25
+
+    # R18+ full-coverage module switches. Defaults keep old checkpoints unchanged.
+    use_ums_mae: bool = False
+    use_pretrained_feature_adapter: bool = False
+    use_everest_pruning: bool = False
+    use_adaptive_budget: bool = False
+    use_hornet_policy: bool = False
+    use_efs_selection: bool = False
+    use_dynamic_logit_threshold: bool = False
+    use_hroute: bool = False
+    use_st_nms: bool = False
+    use_tta_mab: bool = False
+    ums_bottleneck_dim: int = 256
+    lambda_ums_orth: float = 0.05
+    pretrained_feature_root: str = ""
+    pretrained_feature_blend: float = 0.35
+    everest_keep_ratio: float = 0.72
+    adaptive_budget_low: int = 4
+    adaptive_budget_high: int = 48
+    hornet_policy_weight: float = 0.35
+    efs_diversity_weight: float = 0.30
+    dynamic_logit_temperature_min: float = 0.65
+    dynamic_logit_temperature_max: float = 2.50
+    hroute_complexity_threshold: float = 0.35
+    st_nms_min_gap: int = 2
+    tta_mab_lr: float = 0.10
 
     # Stage1: align FramePolicyHead logits to frozen CGRM S_graph（infer 不训练 policy 时 MLP 近似随机，对比 uniform 会系统性吃亏）
     lambda_policy_salign: float = 0.12
@@ -74,7 +117,7 @@ class DSCAVLConfig:
 
     # CGRM weak loss: subtitle gt_mask pooled to events vs S_event (Stage1 auxiliary)
     lambda_cgrm_weak: float = 0.12
-    cgrm_weak_event_pool: str = "mean"  # "mean" | "max"
+    cgrm_weak_event_pool: str = "max"  # "mean" | "max"
     cgrm_weak_loss: str = "bce_logits"  # "bce_logits" | "mse"
     cgrm_weak_tv_weight: float = 0.0
     # True：弱监督只对 CGRM 反传（对 F_fg/S_sem/f_q detach 后再算一遍 cgrm），避免与 stage1 主损失在共享子图上叠加出 NaN 梯度。
@@ -102,7 +145,8 @@ class DSCAVLConfig:
     swanlab_project: str = "DSCA-VL"
 
     # Train
-    lr: float = 5e-3
+    # R12：显式低于 5e-3 峰值，配合 Phase2 特征/图锐化后首训稳定
+    lr: float = 4.3e-3
     # Stage1 LR：``lr`` 为预热结束后的峰值；余弦退火至 ``stage1_lr_min``（见 ``Stage1LRState``）
     stage1_cosine_lr_schedule: bool = True
     stage1_lr_min: float = 5e-5
